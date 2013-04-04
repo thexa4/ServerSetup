@@ -1,0 +1,34 @@
+#!/bin/sh
+ldapsearch -x '(objectclass=goserver)' description cn iphostnumber | grep -A 1 -E 'cn:|description:|ipHostNumber:' | while read line; do
+    field=${line%% *}
+    value=${line#* }
+    case $field in
+        "--" )
+            cn=""
+            ip=""
+            desc=""
+            ;;
+        "cn:" )
+            cn=$value ;;
+        "ipHostNumber:" )
+            ip=$value ;;
+        "description:" )
+            desc=$value ;;
+        "" )
+            # End of ldap config, remove existing configs and add new ones
+            rm /etc/nginx/sites-enabled/vps-$cn-*.proxy 2>/dev/null
+            if echo $desc | grep -q nginx_proxy; then
+                mkdir /var/log/nginx/$cn 2> /dev/null
+                export ip
+                export host=$cn
+                for word in $desc; do
+                    export domain=`echo $word | cut -d'[' -f2 | cut -d']' -f1`
+                    if echo $word | grep -q nginx_proxy; then
+                        perl -p -e 's/\$\{([^}]+)\}/defined $ENV{$1} ? $ENV{$1} : $&/eg' < /opt/ldap2nginx/proxy.template > /etc/nginx/sites-enabled/vps-$cn-$domain.proxy
+                    fi
+                done
+            fi
+            ;;
+    esac
+done
+/etc/init.d/nginx reload > /dev/null

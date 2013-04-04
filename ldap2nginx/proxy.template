@@ -1,0 +1,16 @@
+# Managed by ldap2nginx, any changes will be reverted
+
+server {
+
+	server_name  ${domain};
+
+	access_log  /var/log/nginx/${host}/${domain}.access.log;
+
+	location / {
+        proxy_pass http://${ip};
+        proxy_redirect off;
+        proxy_buffering off;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+	}
+}

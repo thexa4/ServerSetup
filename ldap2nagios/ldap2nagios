@@ -1,0 +1,11 @@
+#!/bin/bash
+path=/opt/ldap2nagios
+orgs="system max joris jasper wouter"
+
+$path/ldap2contacts
+$path/ldap2contactgroups
+for org in $orgs; do
+    $path/ldap2vps $org
+done
+
+/etc/init.d/nagios3 reload | tail -n+2

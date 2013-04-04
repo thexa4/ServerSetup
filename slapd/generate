@@ -1,0 +1,10 @@
+#!/bin/sh
+slaptest -f /etc/ldap/toldif.conf -F /etc/ldap/ldif
+(
+cd /etc/ldap/ldif
+mkdir fixed
+cd cn=config/cn=schema
+for f in *ldif; do
+	sed -rf /etc/ldap/fixit.sed "$f" > /etc/ldap/ldif/fixed/$f
+done
+)

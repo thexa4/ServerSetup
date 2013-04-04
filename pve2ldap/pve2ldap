@@ -1,0 +1,88 @@
+#!/usr/bin/php
+<?php
+include('lib/pve2-api-php-client/pve2_api.class.php');
+
+$pve2 = new PVE2_API('10.10.0.1', "pve2ldap", "pve", "RA1lgpgHo1pA0hUsne");
+
+$ranges = array("system" => 100,
+    "max" => 1000,
+    "joris" => 1100,
+    "jasper" => 1200,
+    "wouter" => 1300,
+);
+
+$ldap = ldap_connect();
+
+if ($pve2->constructor_success()) {
+    /* Optional - enable debugging. It print()'s any results currently */
+    // $pve2->set_debug(true);
+    
+    if ($pve2->login()) {
+        ldap_set_option($ldap, LDAP_OPT_PROTOCOL_VERSION, 3);
+        ldap_bind($ldap,  "cn=admin,dc=fuzzytubes,dc=net", "7kwpmg6eNujm");
+
+        foreach($pve2->get("/pools") as $pool)
+        {
+            foreach($pve2->get("/pools/" . $pool['poolid'])['members'] as $node)
+            {
+                if($node['type'] != 'openvz')
+                    continue;
+
+                $vmid = $node['vmid'];
+                $range = $ranges[$pool['poolid']];
+
+                if($vmid < $range || $vmid > $range + 99)
+                    continue;
+
+                $config = $pve2->get("/nodes/" . $node['node'] . '/openvz/' . $vmid . '/config');
+
+                $name = explode('.', $node['name'])[0];
+                $dn = 'cn=' . strtolower($name) . ',ou=servers,ou=systems,o=' . strtolower($pool['poolid']) . ',dc=fuzzytubes,dc=net';
+
+                $lsearch = ldap_search($ldap, "dc=fuzzytubes,dc=net", '(cn=' . $name . ')');
+                if(ldap_count_entries($ldap, $lsearch) == 0)
+                {
+                    // Create new entry
+                    foreach(explode(',', $config['netif']) as $couple)
+                    {
+                        list($key, $value) = explode('=', $couple);
+                        if($key == 'mac')
+                            $mac = $value;
+                    }
+
+                    if(!isset($mac))
+                        continue;
+
+                    $newentry = array("cn" => strtolower($name),
+                        "description" => strtoupper($name) . ' vps',
+                        "gotomode" => 'active',
+                        "iphostnumber" => '10.10.' . (int)($vmid / 100) . '.' . ($vmid % 100),
+                        "macaddress" => strtolower($mac),
+                        "objectclass" => array("top", "GOhard", "goserver"),
+                    );
+
+
+                    print('Creating: ' . $dn . "<br>\n");
+                    ldap_add($ldap, $dn, $newentry);
+                }
+                else
+                {
+                    // Update entry (description)
+                    
+                    $description = strtoupper($name) . ' vps';
+                   
+                    if(isset($config['description']))
+                        $description .= ' ' . str_replace("\n", " ", $config['description']);
+                    ldap_modify($ldap, $dn, array("description" => $description));
+                }
+            }
+        }
+
+    } else {
+        print("Login to Proxmox Host failed.\n");
+        exit;
+    }
+} else {
+    print("Could not create PVE2_API object.\n");
+    exit;
+}
